@@ -61,7 +61,8 @@ class BlisterSolverTest {
                 Arguments.of(optimize_justNewBlisterRequestedAndHasEnough_getAllNew()),
                 Arguments.of(optimize_justNewBlisterRequestedAndHasEnoughAndNoOldAvailable_getAllNew()),
                 Arguments.of(optimize_hasEnoughNewAndOldBlister_getExpectedNewAndOld()),
-                Arguments.of(optimize_hasEnoughNewBlisterAndNoOld_getAllNew())
+                Arguments.of(optimize_hasEnoughNewAndNoOldBlister_getAllNew()),
+                Arguments.of(optimize_hasEnoughNewAndAFewOldBlisters_allOldBlistersAreUsed())
         );
     }
 
@@ -126,7 +127,7 @@ class BlisterSolverTest {
         return new BlisterTest(17, 100, orders);
     }
 
-    private static BlisterTest optimize_hasEnoughNewBlisterAndNoOld_getAllNew() {
+    private static BlisterTest optimize_hasEnoughNewAndNoOldBlister_getAllNew() {
         OrderTest orderA = new OrderTest(80, 10);
         OrderTest orderB = new OrderTest(60, 15);
         OrderTest orderC = new OrderTest(0, 20);
@@ -137,6 +138,23 @@ class BlisterSolverTest {
         orders.put(orderC, new ExpectedResult(20, 0));
 
         return new BlisterTest(45,0, orders);
+    }
+
+    private static BlisterTest optimize_hasEnoughNewAndAFewOldBlisters_allOldBlistersAreUsed() {
+        OrderTest orderA = new OrderTest(30, 10);
+        OrderTest orderB = new OrderTest(40, 15);
+        OrderTest orderC = new OrderTest(20, 20);
+        OrderTest orderD = new OrderTest(80, 9);
+        OrderTest orderE = new OrderTest(90, 33);
+
+        Map<OrderTest, ExpectedResult> orders = new HashMap<>();
+        orders.put(orderA, new ExpectedResult(9, 1));
+        orders.put(orderB, new ExpectedResult(6, 9));
+        orders.put(orderC, new ExpectedResult(20, 0));
+        orders.put(orderD, new ExpectedResult(8, 1));
+        orders.put(orderE, new ExpectedResult(33, 0));
+
+        return new BlisterTest(100,11, orders);
     }
 
     private static class BlisterTest {
