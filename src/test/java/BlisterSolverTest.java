@@ -63,7 +63,8 @@ class BlisterSolverTest {
     }
 
     private static Stream<Arguments> blisterTest() {
-        return Stream.of(
+        Stream<Arguments> arguments1 = optimize_noOldGivenAndRequireAllNewWithAllPossiblePercentages_getAllNew();
+        Stream<Arguments> arguments2 = Stream.of(
                 Arguments.of(optimize_noNeedForNewBlisterAndEnoughOldAvailable_getAllOld()),
                 Arguments.of(optimize_noNeedForNewBlisterAndEnoughOldAvailableAndNoNewAvailable_getAllOld()),
                 Arguments.of(optimize_justNewBlisterRequestedAndHasEnough_getAllNew()),
@@ -93,9 +94,31 @@ class BlisterSolverTest {
                 Arguments.of(optimize_veryLargeOrder_getExpected()),
                 Arguments.of(optimize_veryLargeOrder2_getExpected()),
                 Arguments.of(optimize_noBlisterAvailable_allDisabled()),
-                Arguments.of(optimize_noOrderIsFulfillable_allDisabled()),
-                Arguments.of(optimize_specialTest())
+                Arguments.of(optimize_noOrderIsFulfillable_allDisabled())
         );
+        return Stream.concat(arguments1, arguments2);
+    }
+
+    private static Stream<Arguments> optimize_noOldGivenAndRequireAllNewWithAllPossiblePercentages_getAllNew() {
+        int maxPercentage = 100;
+        Arguments[] arguments = new Arguments[maxPercentage+1];
+
+        for(int i = 0; i <= maxPercentage; i++) {
+            arguments[i] = Arguments.of(createWithPercentage(i));
+        }
+        return Stream.of(arguments);
+    }
+
+    private static BlisterTest createWithPercentage(long percentage) {
+        LocalDate currentDate = LocalDate.now();
+        OrderTest orderA = new OrderTest(percentage, toDate(currentDate), 20);
+        OrderTest orderB = new OrderTest(10L, toDate(currentDate.plusDays(1)), 10);
+
+        Map<OrderTest, ExpectedResult> orders = new HashMap<>();
+        orders.put(orderA, new ExpectedResult(20, 0));
+        orders.put(orderB, new ExpectedResult(10, 0));
+
+        return new BlisterTest(30, 0, orders);
     }
 
     private static BlisterTest optimize_specialTest() {
@@ -210,14 +233,14 @@ class BlisterSolverTest {
         OrderTest orderB = new OrderTest(40L, toDate(currentDate.plusDays(1)), 15);
         OrderTest orderC = new OrderTest(20L, toDate(currentDate.plusDays(2)), 20);
         OrderTest orderD = new OrderTest(80L, toDate(currentDate.plusDays(3)), 9);
-        OrderTest orderE = new OrderTest(90L, toDate(currentDate.plusDays(4)), 33);
+        OrderTest orderE = new OrderTest(97L, toDate(currentDate.plusDays(4)), 33);
 
         Map<OrderTest, ExpectedResult> orders = new HashMap<>();
         orders.put(orderA, new ExpectedResult(10, 0));
         orders.put(orderB, new ExpectedResult(15, 0));
-        orders.put(orderC, new ExpectedResult(13, 7));
+        orders.put(orderC, new ExpectedResult(10, 10));
         orders.put(orderD, new ExpectedResult(8, 1));
-        orders.put(orderE, new ExpectedResult(30, 3));
+        orders.put(orderE, new ExpectedResult(33, 0));
 
         return new BlisterTest(100, 11, orders);
     }

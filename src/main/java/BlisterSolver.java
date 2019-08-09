@@ -36,6 +36,8 @@ public class BlisterSolver {
     }
 
     private void optimize(BlisterData blisterData) {
+        ExpressionsBasedModel.clearPresolvers();
+        ExpressionsBasedModel.clearIntegrations();
         final ExpressionsBasedModel model = new ExpressionsBasedModel();
 
         // Object function
@@ -126,7 +128,6 @@ public class BlisterSolver {
         }
 
         Optimisation.Result result = model.maximise();
-        System.out.println(result);
         if (result.getState().isFailure()) {
             throw new IllegalStateException("Optimized data wrong: " + result);
         }
