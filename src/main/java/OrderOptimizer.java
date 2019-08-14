@@ -2,43 +2,31 @@ import org.ojalgo.optimisation.Expression;
 import org.ojalgo.optimisation.ExpressionsBasedModel;
 import org.ojalgo.optimisation.Optimisation;
 import org.ojalgo.optimisation.Variable;
+import org.ojalgo.optimisation.linear.LinearSolver;
 
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.util.*;
 
-public class BlisterSolver {
+public class OrderOptimizer {
 
-    private static final int BIG_INT = 1_000_000;
-    private static final double HUNDRED = 100.0d;
-    private static final int FULFILLMENT_WEIGHT = 10_000;
-    private static final int SHORTTIME_WEIGHT = 1;
-    private static final int LONGTIME_WEIGHT = 1;
+    private static final BigDecimal BIG_INT = BigDecimal.valueOf(1_000_000);
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100.0d);
+    private static final BigDecimal FULFILLMENT_WEIGHT = BigDecimal.valueOf(10_000);
+    private static final BigDecimal SHORTTIME_WEIGHT = BigDecimal.ONE;
+    private static final BigDecimal LONGTIME_WEIGHT = BigDecimal.ONE;
+    private static final int DIVISION_SCALE = 20;
 
-    /**
-     * Optimiert die Verteilung der Blister auf die Bestellungen.
-     * Wenn der Mindestlangzeitanteil nicht
-     * gesetzt ist, so sollten möglichst viele neue Blister verkauft werden. Wird der Mindestlangzeitanteil gesetzt, so
-     * sollen möglichst viele alte Blister verkauft werden.
-     * <p>
-     * Für genaue Beschreibung siehe:
-     * UC 3.04.01 Bestellung automatisch erfüllen / Dokument Optimierung_der_Blister.docx
-     *
-     * <p>
-     * Die zu optimierenden Variablen finden sich in {@link BlisterSolver.Order} und heissen
-     * longtime und enabled.
-     *
-     * @param data Zu optimierende Daten
-     */
     public void optimize(Collection<BlisterData> data) {
         data.forEach(this::optimize);
     }
 
     private void optimize(BlisterData blisterData) {
-        ExpressionsBasedModel.clearPresolvers();
-        ExpressionsBasedModel.clearIntegrations();
-        final ExpressionsBasedModel model = new ExpressionsBasedModel();
+        Optimisation.Options options = new Optimisation.Options();
+        options.mip_gap = 1.0E-15;
+        //options.validate = true;
+        //options.debug(LinearSolver.class);
+        final ExpressionsBasedModel model = new ExpressionsBasedModel(options);
 
         // Object function
         Expression orderFulfillment = model.addExpression("object_enabled")
@@ -48,12 +36,16 @@ public class BlisterSolver {
         Expression longTimeFulfillment = model.addExpression("object_longTime")
                 .weight(LONGTIME_WEIGHT);
 
+        Variable constantBigInt = model.addVariable("constant_big_int")
+                .integer(true)
+                .level(BIG_INT);
+
         // n_1 + ,..., + n_n <= N
         Expression allNewBlisterAreLowerOrEqualsMaximum = model.addExpression("newBlistersMaximum")
-                .upper(BigInteger.valueOf(blisterData.newAmount));
+                .upper(BigDecimal.valueOf(blisterData.newAmount));
         // a_1 + ,..., + a_n <= A
         Expression allOldBlisterAreLowerOrEqualsMaximum = model.addExpression("oldBlistersMaximum")
-                .upper(BigInteger.valueOf(blisterData.oldAmount));
+                .upper(BigDecimal.valueOf(blisterData.oldAmount));
         int index = 0;
 
         List<Order> sortedByDate = new ArrayList<>(blisterData.orders);
@@ -63,71 +55,59 @@ public class BlisterSolver {
             Variable enabled = model.addVariable("enabled_" + index)
                     .binary();
             Variable longtime = model.addVariable("longtime_" + index)
-                    .lower(BigInteger.valueOf(0));
-            Variable newAmount = model.addVariable("newAmount_" + index)
-                    .integer(true);
+                    .lower(0);
 
             BigDecimal longTimeWeight;
             BigDecimal shortTimeWeight;
             BigDecimal lowerBound;
             if (order.getLongtimeValue() != null) {
                 lowerBound = BigDecimal.valueOf(order.getLongtimeValue())
-                        .divide(BigDecimal.valueOf(HUNDRED), 100, RoundingMode.HALF_EVEN);
-                longTimeWeight = BigDecimal.valueOf(0);
-                shortTimeWeight = BigDecimal.valueOf(1);
+                        .divide(HUNDRED, DIVISION_SCALE, RoundingMode.HALF_UP);
+                longTimeWeight = BigDecimal.ZERO;
+                shortTimeWeight = BigDecimal.ONE;
             } else {
-                lowerBound = BigDecimal.valueOf(0);
-                longTimeWeight = BigDecimal.valueOf(1);
-                shortTimeWeight = BigDecimal.valueOf(0);
+                lowerBound = BigDecimal.ZERO;
+                longTimeWeight = BigDecimal.ONE;
+                shortTimeWeight = BigDecimal.ZERO;
             }
 
             order.setLongtime(longtime);
             order.setEnabled(enabled);
 
-            // enabled = 1 -> longtime >= 0
-            // enabled = 0 -> longtime = 0
+            // enabled = 1 -> minimum <= longtime <= 1
             bindLongtimeToEnabled(model, index, enabled, longtime, lowerBound);
 
-            // newAmount = (longtime * requested)
-            // (longtime * requested) - newAmount = 0
-            // Resultat muss ganzzahlig sein -> Siehe newAmount
-            bindNewAmountToLongtime(model, index, newAmount, longtime, order.getRequestedAmount());
-
-            Variable oldAmount = model.addVariable("oldAmount_" + index)
-                    .integer(true);
-            // oldAmount + newAmount = requested
-            bindOldAmountToNewAmount(model, index, newAmount, oldAmount, order.getRequestedAmount());
-
-            Variable oldDeduction = model.addVariable("oldDeduction_" + index);
+            Variable oldDeduction = model.addVariable("oldDeduction_" + index)
+                    .integer(true)
+                    .lower(BigDecimal.ZERO);
             // oldDeduction = enabled * oldValue
-            bindOldDeductionToEnabledAndOldValue(model, index, enabled, oldAmount, oldDeduction);
+            bindOldDeductionToEnabledAndOldValue(model, index, enabled, oldDeduction, longtime, constantBigInt,
+                    order.requestedAmount);
 
             allNewBlisterAreLowerOrEqualsMaximum
-                    .set(newAmount, BigDecimal.valueOf(1));
+                    .set(longtime, BigDecimal.valueOf(order.requestedAmount));
             allOldBlisterAreLowerOrEqualsMaximum
-                    .set(oldDeduction, BigDecimal.valueOf(1));
+                    .set(oldDeduction, BigDecimal.ONE);
 
             // Update Object-function
-            Variable constantOne = model.addVariable("constant_one_" + index)
-                    .integer(true)
-                    .level(1);
             int divider = (index + 1);
             int reversedDivider = sortedByDate.size() + 1 - divider;
             orderFulfillment
-                    .set(enabled, BigDecimal.valueOf(getWeightOf(index)));
+                    .set(enabled, getWeightOf(index));
             shortTimeFulfillment
                     .set(longtime, shortTimeWeight
-                            .divide(BigDecimal.valueOf(reversedDivider), 100, RoundingMode.HALF_EVEN)
-                            .multiply(BigDecimal.valueOf(-divider)))
-                    .set(constantOne, shortTimeWeight);
+                            .divide(BigDecimal.valueOf(reversedDivider), DIVISION_SCALE, RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(-divider)));
             longTimeFulfillment
                     .set(longtime, longTimeWeight
-                            .divide(BigDecimal.valueOf(divider), 100, RoundingMode.HALF_EVEN)
+                            .divide(BigDecimal.valueOf(divider), DIVISION_SCALE, RoundingMode.HALF_UP)
                             .multiply(BigDecimal.valueOf(reversedDivider)));
             index++;
         }
 
         Optimisation.Result result = model.maximise();
+        System.out.println(model.validate(result));
+        System.out.println(result);
         if (result.getState().isFailure()) {
             throw new IllegalStateException("Optimized data wrong: " + result);
         }
@@ -136,57 +116,41 @@ public class BlisterSolver {
     private void bindLongtimeToEnabled(ExpressionsBasedModel model, int index, Variable enabled, Variable longtime,
             BigDecimal lowerBound) {
         model.addExpression("enabled_longtime_" + index)
-                .set(longtime, BigInteger.valueOf(1))
-                .set(enabled, BigInteger.valueOf(-1))
-                .lower(lowerBound.subtract(BigDecimal.valueOf(1)))
-                .upper(BigInteger.valueOf(0));
-    }
-
-    private void bindNewAmountToLongtime(ExpressionsBasedModel model, int index, Variable newAmount, Variable longtime,
-            int requestedAmount) {
-        model.addExpression("newAmount_longtime_" + index)
-                .set(newAmount, BigInteger.valueOf(-1))
-                .set(longtime, requestedAmount)
-                .level(BigInteger.valueOf(0));
-    }
-
-    private void bindOldAmountToNewAmount(ExpressionsBasedModel model, int index, Variable newAmount,
-            Variable oldAmount, int requestedAmount) {
-        model.addExpression("bind_old_" + index)
-                .set(newAmount, BigInteger.valueOf(1))
-                .set(oldAmount, BigInteger.valueOf(1))
-                .level(requestedAmount);
+                .set(longtime, BigDecimal.ONE)
+                .set(enabled, BigDecimal.valueOf(-1))
+                .lower(lowerBound.subtract(BigDecimal.ONE))
+                .upper(BigDecimal.ZERO);
     }
 
     private void bindOldDeductionToEnabledAndOldValue(ExpressionsBasedModel model, int index, Variable enabled,
-            Variable oldAmount, Variable oldDeduction) {
-        Variable constantBigInt = model.addVariable("constant_big_int_" + index)
+            Variable oldDeduction, Variable longtime, Variable constantBigInt, int requestedAmount) {
+        Variable constantReqAmount = model.addVariable("constant_req_int_" + index)
                 .integer(true)
-                .level(BigInteger.valueOf(BIG_INT));
-        model.addExpression("oldDeduction_1_" + index)
-                .set(oldDeduction, BigInteger.valueOf(1))
-                .lower(BigDecimal.valueOf(0));
+                .level(BigDecimal.valueOf(requestedAmount));
+
         model.addExpression("oldDeduction_2_" + index)
-                .set(oldDeduction, BigInteger.valueOf(-1))
-                .set(enabled, BigInteger.valueOf(BIG_INT))
-                .lower(BigInteger.valueOf(0));
+                .set(oldDeduction, BigDecimal.valueOf(-1))
+                .set(enabled, BIG_INT)
+                .lower(BigDecimal.ZERO);
         model.addExpression("oldDeduction_3_" + index)
-                .set(oldDeduction, BigInteger.valueOf(-1))
-                .set(oldAmount, BigInteger.valueOf(1))
-                .lower(BigInteger.valueOf(0));
+                .set(oldDeduction, BigDecimal.valueOf(-1))
+                .set(constantReqAmount, BigDecimal.ONE)
+                .set(longtime, BigDecimal.valueOf(-requestedAmount))
+                .lower(BigDecimal.ZERO);
         model.addExpression("oldDeduction_4_" + index)
-                .set(oldDeduction, BigInteger.valueOf(-1))
-                .set(oldAmount, BigInteger.valueOf(1))
-                .set(constantBigInt, BigInteger.valueOf(-1))
-                .set(enabled, BigInteger.valueOf(BIG_INT))
-                .upper(BigInteger.valueOf(0));
+                .set(oldDeduction, BigDecimal.valueOf(-1))
+                .set(constantReqAmount, BigDecimal.ONE)
+                .set(longtime, BigDecimal.valueOf(-requestedAmount))
+                .set(constantBigInt, BigDecimal.valueOf(-1))
+                .set(enabled, BIG_INT)
+                .upper(BigDecimal.ZERO);
     }
 
-    private double getWeightOf(int input) {
-        if (input > 6) {
-            return (1 / Math.pow(2, 6));
-        }
-        return (1 / Math.pow(2, (input)));
+    private BigDecimal getWeightOf(int input) {
+        int x = input > 6 ? 6 : input;
+        BigDecimal pow = BigDecimal.valueOf(2).pow(x);
+        BigDecimal one = BigDecimal.ONE;
+        return one.divide(pow, DIVISION_SCALE, RoundingMode.HALF_UP);
     }
 
     public static class BlisterData {
@@ -256,10 +220,6 @@ public class BlisterSolver {
 
         public Long getId() {
             return id;
-        }
-
-        public int getRequestedAmount() {
-            return requestedAmount;
         }
 
         public Date getOrderingDate() {
