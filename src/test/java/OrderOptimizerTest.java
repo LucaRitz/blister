@@ -54,8 +54,8 @@ class OrderOptimizerTest {
             allNewAmount += newAmount;
             allOldAmount += oldAmount;
 
-            //assertEquals(expected.newAmount, newAmount);
-            //assertEquals(expected.oldAmount, oldAmount);
+            assertEquals(expected.newAmount, newAmount);
+            assertEquals(expected.oldAmount, oldAmount);
             System.out.println("---Order---");
             System.out.println("Expected new: " + expected.newAmount);
             System.out.println("New: " + newAmount);

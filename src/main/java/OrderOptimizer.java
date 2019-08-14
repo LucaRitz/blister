@@ -2,7 +2,6 @@ import org.ojalgo.optimisation.Expression;
 import org.ojalgo.optimisation.ExpressionsBasedModel;
 import org.ojalgo.optimisation.Optimisation;
 import org.ojalgo.optimisation.Variable;
-import org.ojalgo.optimisation.linear.LinearSolver;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -23,9 +22,7 @@ public class OrderOptimizer {
 
     private void optimize(BlisterData blisterData) {
         Optimisation.Options options = new Optimisation.Options();
-        options.mip_gap = 1.0E-15;
-        //options.validate = true;
-        //options.debug(LinearSolver.class);
+        options.mip_gap = 1.0E-100;
         final ExpressionsBasedModel model = new ExpressionsBasedModel(options);
 
         // Object function
@@ -36,9 +33,11 @@ public class OrderOptimizer {
         Expression longTimeFulfillment = model.addExpression("object_longTime")
                 .weight(LONGTIME_WEIGHT);
 
-        Variable constantBigInt = model.addVariable("constant_big_int")
+        Variable constantBigInt = Variable.make("constant_big_int").integer(true).level(BIG_INT);
+        model.addVariable(constantBigInt);
+        /*Variable constantBigInt = model.addVariable("constant_big_int")
                 .integer(true)
-                .level(BIG_INT);
+                .level(BIG_INT);*/
 
         // n_1 + ,..., + n_n <= N
         Expression allNewBlisterAreLowerOrEqualsMaximum = model.addExpression("newBlistersMaximum")
@@ -52,10 +51,15 @@ public class OrderOptimizer {
         sortedByDate.sort(Comparator.comparing(Order::getOrderingDate));
 
         for (Order order : sortedByDate) {
-            Variable enabled = model.addVariable("enabled_" + index)
-                    .binary();
-            Variable longtime = model.addVariable("longtime_" + index)
-                    .lower(0);
+            /*Variable enabled = model.addVariable("enabled_" + index)
+                    .binary();*/
+            Variable enabled = Variable.makeBinary("enabled_" + index);
+            model.addVariable(enabled);
+
+            /*Variable longtime = model.addVariable("longtime_" + index)
+                    .lower(0);*/
+            Variable longtime = Variable.make("longtime_" + index).lower(0);
+            model.addVariable(longtime);
 
             BigDecimal longTimeWeight;
             BigDecimal shortTimeWeight;
@@ -77,9 +81,14 @@ public class OrderOptimizer {
             // enabled = 1 -> minimum <= longtime <= 1
             bindLongtimeToEnabled(model, index, enabled, longtime, lowerBound);
 
-            Variable oldDeduction = model.addVariable("oldDeduction_" + index)
+            /*Variable oldDeduction = model.addVariable("oldDeduction_" + index)
+                    .integer(true)
+                    .lower(BigDecimal.ZERO);*/
+
+            Variable oldDeduction = Variable.make("oldDeduction_" + index)
                     .integer(true)
                     .lower(BigDecimal.ZERO);
+            model.addVariable(oldDeduction);
             // oldDeduction = enabled * oldValue
             bindOldDeductionToEnabledAndOldValue(model, index, enabled, oldDeduction, longtime, constantBigInt,
                     order.requestedAmount);
@@ -124,9 +133,13 @@ public class OrderOptimizer {
 
     private void bindOldDeductionToEnabledAndOldValue(ExpressionsBasedModel model, int index, Variable enabled,
             Variable oldDeduction, Variable longtime, Variable constantBigInt, int requestedAmount) {
-        Variable constantReqAmount = model.addVariable("constant_req_int_" + index)
+       /* Variable constantReqAmount = model.addVariable("constant_req_int_" + index)
+                .integer(true)
+                .level(BigDecimal.valueOf(requestedAmount));*/
+        Variable constantReqAmount = Variable.make("constant_req_int_" + index)
                 .integer(true)
                 .level(BigDecimal.valueOf(requestedAmount));
+        model.addVariable(constantReqAmount);
 
         model.addExpression("oldDeduction_2_" + index)
                 .set(oldDeduction, BigDecimal.valueOf(-1))

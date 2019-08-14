@@ -12,7 +12,7 @@ repositories {
 }
 
 dependencies {
-    compile group: 'org.ojalgo', name: 'ojalgo', version: '47.3.0'
+    compile group: 'org.ojalgo', name: 'ojalgo', version: '44.0.0'
     compile "com.google.guava:guava:20.0"
 
     testCompile group: 'org.junit.jupiter', name: 'junit-jupiter-api', version: '5.5.0'
