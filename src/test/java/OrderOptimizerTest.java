@@ -71,7 +71,7 @@ class OrderOptimizerTest {
     }
 
     private static Stream<Arguments> blisterTest() {
-        Stream<Arguments> arguments1 = optimize_noOldGivenAndRequireAllNewWithAllPossiblePercentages_getAllNew();
+        Stream<Arguments> arguments = optimize_noOldGivenAndRequireAllNewWithAllPossiblePercentages_getAllNew();
         Stream<Arguments> arguments2 = Stream.of(
                 Arguments.of(optimize_noNeedForNewBlisterAndEnoughOldAvailable_getAllOld()),
                 Arguments.of(optimize_noNeedForNewBlisterAndEnoughOldAvailableAndNoNewAvailable_getAllOld()),
@@ -103,12 +103,17 @@ class OrderOptimizerTest {
                 Arguments.of(optimize_veryLargeOrder2_getExpected()),
                 Arguments.of(optimize_noBlisterAvailable_allDisabled()),
                 Arguments.of(optimize_noOrderIsFulfillable_allDisabled()),
-                Arguments.of(optimize_this_test_is_wrong())
+                Arguments.of(optimize_this_test_is_wrong_since_45_0_0())
         );
-        return Stream.concat(arguments1, arguments2);
+        arguments = Stream.concat(arguments, arguments2);
+
+        Stream<Arguments> argumentsFailsIn4400 = optimize_this_test_fails_sometimes_in_44_0_0();
+        arguments = Stream.concat(arguments, argumentsFailsIn4400);
+
+        return arguments;
     }
 
-    private static BlisterTest optimize_this_test_is_wrong() {
+    private static BlisterTest optimize_this_test_is_wrong_since_45_0_0() {
         LocalDate currentDate = LocalDate.now();
         OrderTest orderA = new OrderTest(60L, toDate(currentDate), 20);
         OrderTest orderB = new OrderTest(10L, toDate(currentDate.plusDays(1)), 10);
@@ -118,6 +123,22 @@ class OrderOptimizerTest {
         orders.put(orderB, new ExpectedResult(1, 9));
 
         return new BlisterTest(30, 10, orders);
+    }
+
+    private static Stream<Arguments> optimize_this_test_fails_sometimes_in_44_0_0() {
+        LocalDate currentDate = LocalDate.now();
+        Arguments[] args = new Arguments[10000];
+        for (int i = 0; i < args.length; i++) {
+            OrderTest orderA = new OrderTest(69L, toDate(currentDate), 20);
+            OrderTest orderB = new OrderTest(10L, toDate(currentDate.plusDays(1)), 10);
+
+            Map<OrderTest, ExpectedResult> orders = new HashMap<>();
+            orders.put(orderA, new ExpectedResult(20, 0));
+            orders.put(orderB, new ExpectedResult(10, 0));
+            args[i] = Arguments.of(new BlisterTest(30, 0, orders));
+        }
+
+        return Stream.of(args);
     }
 
     private static Stream<Arguments> optimize_noOldGivenAndRequireAllNewWithAllPossiblePercentages_getAllNew() {

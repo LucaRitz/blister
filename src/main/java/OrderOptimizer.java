@@ -14,7 +14,8 @@ public class OrderOptimizer {
     private static final BigDecimal FULFILLMENT_WEIGHT = BigDecimal.valueOf(10_000);
     private static final BigDecimal SHORTTIME_WEIGHT = BigDecimal.ONE;
     private static final BigDecimal LONGTIME_WEIGHT = BigDecimal.ONE;
-    private static final int DIVISION_SCALE = 20;
+    private static final int DIVISION_SCALE = 10_000;
+    private static final int SCALE = DIVISION_SCALE;
 
     public void optimize(Collection<BlisterData> data) {
         data.forEach(this::optimize);
@@ -22,7 +23,7 @@ public class OrderOptimizer {
 
     private void optimize(BlisterData blisterData) {
         Optimisation.Options options = new Optimisation.Options();
-        options.mip_gap = 1.0E-100;
+        options.mip_gap = 0;
         final ExpressionsBasedModel model = new ExpressionsBasedModel(options);
 
         // Object function
@@ -58,7 +59,8 @@ public class OrderOptimizer {
 
             /*Variable longtime = model.addVariable("longtime_" + index)
                     .lower(0);*/
-            Variable longtime = Variable.make("longtime_" + index).lower(0);
+            Variable longtime = Variable.make("longtime_" + index)
+                    .lower(0);
             model.addVariable(longtime);
 
             BigDecimal longTimeWeight;
@@ -66,13 +68,19 @@ public class OrderOptimizer {
             BigDecimal lowerBound;
             if (order.getLongtimeValue() != null) {
                 lowerBound = BigDecimal.valueOf(order.getLongtimeValue())
-                        .divide(HUNDRED, DIVISION_SCALE, RoundingMode.HALF_UP);
-                longTimeWeight = BigDecimal.ZERO;
-                shortTimeWeight = BigDecimal.ONE;
+                        .divide(HUNDRED, DIVISION_SCALE, RoundingMode.HALF_UP)
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
+                longTimeWeight = BigDecimal.ZERO
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
+                shortTimeWeight = BigDecimal.ONE
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
             } else {
-                lowerBound = BigDecimal.ZERO;
-                longTimeWeight = BigDecimal.ONE;
-                shortTimeWeight = BigDecimal.ZERO;
+                lowerBound = BigDecimal.ZERO
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
+                longTimeWeight = BigDecimal.ONE
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
+                shortTimeWeight = BigDecimal.ZERO
+                        .setScale(SCALE, RoundingMode.UNNECESSARY);
             }
 
             order.setLongtime(longtime);
@@ -161,8 +169,11 @@ public class OrderOptimizer {
 
     private BigDecimal getWeightOf(int input) {
         int x = input > 6 ? 6 : input;
-        BigDecimal pow = BigDecimal.valueOf(2).pow(x);
-        BigDecimal one = BigDecimal.ONE;
+        BigDecimal pow = BigDecimal.valueOf(2)
+                .setScale(SCALE, RoundingMode.UNNECESSARY)
+                .pow(x);
+        BigDecimal one = BigDecimal.ONE
+                .setScale(SCALE, RoundingMode.UNNECESSARY);
         return one.divide(pow, DIVISION_SCALE, RoundingMode.HALF_UP);
     }
 
